@@ -14,6 +14,12 @@
 | Migration |       Alembic        |
 | Container | Docker Compose Watch |
 
+## 개발 환경
+
+|   분류   |   버전  |
+|:--------:|:-------:|
+|  Python  | 3.11.13 |
+
 ## 시작하기
 
 ```bash
