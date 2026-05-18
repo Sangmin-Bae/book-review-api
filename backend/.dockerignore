@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyo
+*.pyd
+*.egg-info/
+
+# Envrionment
+.env
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
