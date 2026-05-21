@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.config import settings
 from app.db.session import Base
 
+# Alembic autogenerate를 위한 모델 로드
+import app.models
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 # alembic.ini 설정 로드
