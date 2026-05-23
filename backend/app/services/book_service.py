@@ -66,3 +66,34 @@ def delete_book(db: Session, book_id: int) -> None:
     db_book = get_book(db, book_id)
     db.delete(db_book)
     db.commit()
+
+
+def search_books_like(
+        db: Session,
+        query: str,
+        skip: int = 0,
+        limit: int = 100,
+) -> list[Book]:
+    """
+    LIKE 검색 방식
+
+    동작: WHERE title LIKE '%검색어%' 패턴으로 검색
+    특징: 앞에 %가 붙으면 인덱스 사용 불가 -> 전체 테이블 스캔
+    용도: 성능 비교의 기준점(baseline)
+    """
+    # %검색어% 패턴: 검색어가 문자열 어디에든 포함되면 매칭
+    search_pattern = f"%{query}%"
+
+    return db.execute(
+        select(Book)
+        .options(joinedload(Book.category))
+        .where(
+            # ilike: 대소문자 구분 없는 LIKE (case-insensitive)
+            # 영어 검색 시 'Pachinko'와 'pachinko' 모두 매칭
+            Book.title.ilike(search_pattern) |
+            Book.author.ilike(search_pattern) |
+            Book.description.ilike(search_pattern)
+        )
+        .offset(skip)
+        .limit(limit)
+    ).scalars().all()
