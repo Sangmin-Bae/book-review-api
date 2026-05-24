@@ -1,4 +1,4 @@
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
@@ -155,6 +155,45 @@ def search_books_trigram(
             # 인덱스 없이 전체 유사도 계산 -> 매우 느릴 수 있음
             Book.description.ilike(search_pattern)
         )
+        .offset(skip)
+        .limit(limit)
+    ).scalars().all()
+
+
+def search_books_fts(
+        db: Session,
+        query: str,
+        skip: int = 0,
+        limit: int = 100,
+) -> list[Book]:
+    """
+    PostgreSQL FTS(Full-Text Search) 방식
+
+    동작:
+        - search_vector 컬럼의 GIN 인덱스를 활용해서 검색
+        - 검색 결과를 관련도 점수 (ts_rank) 기준으로 정렬
+    특징:
+        - LIKE/trigram 보다 빠른 검색 (GIN 인덱스 + tsvector)
+        - 가중치 기반 관련도 정렬 (제목 매칭 > 저자 매칭 > 설명 매칭)
+        - 'simple' 토크나이저: 언어 무관, 공백/구두점 기준 토큰 분할
+        - 형태소 분석 없음 (영어 어간 추출 미적용)
+    용도: 검색 결과를 관련도 순으로 정렬해서 보여줄 때
+    """
+    # plainto_tsquery: 자연어 입력을 tsquery로 변환
+    # to_tsquery와 달리 특수문자(&, |, !)가 포함된 입력도 오류 없이 처리
+    ts_query = func.plainto_tsquery("simple", query)
+
+    return db.execute(
+        select(Book)
+        .options(joinedload(Book.category))
+        .where(
+            # @@ 연산자: search_vector와 ts_query 토큰이 존재하면 매칭
+            Book.search_vector.op("@@")(ts_query)
+        )
+        # ts_rank: 검색 결과의 관련도 점수 계산
+        # search_vector의 가중치(A/B/C) 반영
+        # desc(): 관련도 높은 순서로 정렬
+        .order_by(func.ts_rank(Book.search_vector, ts_query).desc())
         .offset(skip)
         .limit(limit)
     ).scalars().all()

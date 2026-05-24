@@ -1,6 +1,8 @@
 from datetime import date
 from sqlalchemy import String, Text, ForeignKey, Date, Integer, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import TSVECTOR
+
 from app.db.session import Base
 
 
@@ -17,6 +19,10 @@ class Book(Base):
     published_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     isbn: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # FTS용 tsvector 컬럼
+    # title + author + description을 가중치별로 합쳐서 저장
+    # DB 트리거가 INSERT/UPDATE 시 자동 갱신 - 앱 코드에서 직접 수정하지 않음
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     # FK - categories 테이블의 id를 참조
     # ondelete="SET NULL": 카테고리 삭제 시 category_id를 NULL로 변경 (도서는 유지)

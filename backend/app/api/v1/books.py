@@ -16,7 +16,10 @@ def get_books(
         # 검색 방식 선택
         # like: 순수 LIKE 전체 스캔 (성능 기준점)
         # trigram: pg_trgm 유사도 검색 (GIN 인덱스 활용, 영어 오타 허용)
-        search_type: Literal["like", "trigram"] = Query(default="like", description="검색 방식: like(LIKE 검색), trigram(pg_trgm 검색)"),
+        search_type: Literal["like", "trigram", "fts"] = Query(
+            default="like",
+            description="검색 방식: like(LIKE 순차 스캔), trigram(pg_trgm 유사도), fts(Full-Text Search)"
+        ),
         skip: int = 0,
         limit: int = 100,
         db: Session = Depends(get_db),
@@ -30,6 +33,8 @@ def get_books(
         return book_service.search_books_like(db, q, skip=skip, limit=limit)
     elif search_type == "trigram":
         return book_service.search_books_trigram(db, q, skip=skip, limit=limit)
+    elif search_type == "fts":
+        return book_service.search_books_fts(db, q, skip=skip, limit=limit)
 
 
 @router.get("/{book_id}", response_model=BookResponse)
