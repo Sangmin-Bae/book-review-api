@@ -13,8 +13,8 @@ router = APIRouter(prefix="/books", tags=["books"])
 def get_books(
         # 검색어 - None이면 전체 목록 반환
         q: str | None = Query(default=None, description="검색어 (제목/저자/설명)"),
-        # 검색 방식 - 지금은 like만 지원, 이후 trigram/fts 추가 예정
-        search_type: Literal["like"] = Query(default="like", description="검색 방식: like(LIKE 검색)"),
+        # 검색 방식 - like: LIKE 검색, trigram: pg_trgm 검색
+        search_type: Literal["like", "trigram"] = Query(default="like", description="검색 방식: like(LIKE 검색), trigram(pg_trgm 검색)"),
         skip: int = 0,
         limit: int = 100,
         db: Session = Depends(get_db),
@@ -24,9 +24,10 @@ def get_books(
         return book_service.get_books(db, skip=skip, limit=limit)
 
     # 검색 방식에 따라 다른 함수 호출
-    # 이후 trigram, fts 추가 . 여기에 분기 추가
     if search_type == "like":
         return book_service.search_books_like(db, q, skip=skip, limit=limit)
+    elif search_type == "trigram":
+        return book_service.search_books_trigram(db, q, skip=skip, limit=limit)
 
 
 @router.get("/{book_id}", response_model=BookResponse)

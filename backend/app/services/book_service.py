@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
@@ -75,16 +75,28 @@ def search_books_like(
         limit: int = 100,
 ) -> list[Book]:
     """
-    LIKE 검색 방식
+    순수 LIKE 검색 방식 (성능 비교 기준점)
 
-    동작: WHERE title LIKE '%검색어%' 패턴으로 검색
-    특징: 앞에 %가 붙으면 인덱스 사용 불가 -> 전체 테이블 스캔
-    용도: 성능 비교의 기준점(baseline)
+    동작:
+        - WHERE title LIKE '%검색어%' 패턴으로 검색
+        - 인덱스 스캔을 강제로 비활성화해서 순수 LIKE 전체 테이블 스캔
+    특징:
+        - 앞에 %가 붙으면 인덱스 사용 불가
+        - pg_trgm GIN 인덱스가 있어도 사용하지 않음
+        - 전체 테이블 순차 스캔(Sequential Scan) 강제
+        - 데이터가 많을수록 선형으로 느려짐
+        - SET LOCAL: 현재 트랜잭션에만 적용, 다른 요청에 영향 없음
+    용도: trigram/FTS와의 성능 비교의 기준점(baseline)
     """
     # %검색어% 패턴: 검색어가 문자열 어디에든 포함되면 매칭
     search_pattern = f"%{query}%"
 
-    return db.execute(
+    # 현재 트랜잭션에서만 인덱스 스캔 비활성화
+    # pg_trgm GIN 인덱스가 있어도 사용하지 않고 순차 스캔 강제
+    db.execute(text("SET LOCAL enable_indexscan = off"))
+    db.execute(text("SET LOCAL enable_bitmapscan = off"))
+
+    result = db.execute(
         select(Book)
         .options(joinedload(Book.category))
         .where(
@@ -92,6 +104,53 @@ def search_books_like(
             # 영어 검색 시 'Pachinko'와 'pachinko' 모두 매칭
             Book.title.ilike(search_pattern) |
             Book.author.ilike(search_pattern) |
+            Book.description.ilike(search_pattern)
+        )
+        .offset(skip)
+        .limit(limit)
+    ).scalars().all()
+
+    # 인덱스 스캔 설정 복구
+    db.execute(text("SET LOCAL enable_indexscan = on"))
+    db.execute(text("SET LOCAL enable_bitmapscan = on"))
+
+    return result
+
+
+def search_books_trigram(
+        db: Session,
+        query: str,
+        skip: int = 0,
+        limit: int = 100,
+) -> list[Book]:
+    """
+    pg_trgm(trigram) 검색 방식
+
+    동작:
+        - 텍스트를 3글자 조각으로 분리해서 GIN 인덱스로 검색
+        - trigram 유사도 연산자(%)로 유사한 텍스트 검색
+    특징:
+        - LIKE '%검색어%' 패턴에서도 GIN 인덱스 활용 가능
+        - 한국어 포함 모든 언어 지원 (언어 무관)
+        - LIKE 검색보다 빠름
+        - 유사도 기반 검색도 가능 (오타 허용)
+        - title/author: GIN 인덱스 활용
+        - description: 인덱스 없어서 ilike로 보완 (전체 스캔)
+    용도: LIKE보다 빠르며 오타가 있어도 검색 결과를 보여줄 때
+    """
+    search_pattern = f"%{query}%"
+
+    return db.execute(
+        select(Book)
+        .options(joinedload(Book.category))
+        .where(
+            # % 연산자: trigram 유사도 비교 (오타 허용)
+            # '파친코'와 '파칠고'처럼 유사한 텍스트도 매칭
+            Book.title.op('%')(query) |
+            Book.author.op('%')(query) |
+            # description: GIN 인덱스 없음 -> ilike로 전체 스캔
+            # 유사도 연산자를 description에도 적용하면
+            # 인덱스 없이 전체 유사도 계산 -> 매우 느릴 수 있음
             Book.description.ilike(search_pattern)
         )
         .offset(skip)
