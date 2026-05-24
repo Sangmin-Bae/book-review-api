@@ -23,6 +23,7 @@ def get_reviews(
     return review_service.get_reviews_by_book(db, book_id, skip=skip, limit=limit)
 
 
+# status_code=201: 리소스 생성 성공 시 200 대신 201 반환 (HTTP 표준)
 @router.post("/books/{book_id}/reviews", response_model=ReviewResponse, status_code=status.HTTP_201_CREATED)
 def create_review(
         book_id: int,
@@ -35,12 +36,13 @@ def create_review(
 @router.patch("/reviews/{review_id}", response_model=ReviewResponse)
 def update_review(
         review_id: int,
-        review_in: ReviewUpdate,
+        review_in: ReviewUpdate,  # 변경할 필드만 포함 (PATCH 방식)
         db: Session = Depends(get_db),
 ):
     return review_service.update_review(db, review_id, review_in)
 
 
+# status_code=204: 삭제 성공 시 응답 body 없음 (HTTP 표준)
 @router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_review(
         review_id: int,

@@ -14,7 +14,7 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 def get_categories(
         skip: int = 0,  # 건너뛸 항목 수 (페이지네이션)
         limit: int = 100,  # 최대 반환 항목 수
-        db: Session = Depends(get_db),  # DB 세션 주입
+        db: Session = Depends(get_db),  # DB 세션 주입 - get_db()가 요청마다 세션 생성/종료
 ):
     return category_service.get_categories(db, skip=skip, limit=limit)
 
@@ -30,7 +30,7 @@ def get_category(
 # status_code=201: 리소스 생성 성공 시 200 대신 201 반환 (HTTP 표준)
 @router.post("", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
 def create_category(
-        category_in: CategoryCreate,  # 요청 body → Pydantic이 자동 검증
+        category_in: CategoryCreate,  # 요청 body → FastAPI + Pydantic이 자동 검증
         db: Session = Depends(get_db),
 ):
     return category_service.create_category(db, category_in)

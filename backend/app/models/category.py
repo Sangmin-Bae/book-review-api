@@ -3,6 +3,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
 
+# 도서 카테고리 모델
+# Book과 1:N 관계 (카테고리 하나에 여러 도서)
 class Category(Base):
     __tablename__ = "categories"
 

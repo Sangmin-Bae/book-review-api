@@ -10,7 +10,7 @@ def get_category(db: Session, category_id: int) -> Category:
     """단건 조회 - 없으면 404"""
     category = db.get(Category, category_id)
     if not category:
-        raise HTTPException(status_code=404, detail="카테코리를 찾을 수 없습니다")
+        raise HTTPException(status_code=404, detail="카테고리를 찾을 수 없습니다")
     return category
 
 
@@ -34,7 +34,7 @@ def create_category(db: Session, category_in: CategoryCreate) -> Category:
     db_category = Category(**category_in.model_dump())  # model_dump() - pydantic 객체를 딕셔너리로 변환
     db.add(db_category)
     db.commit()
-    db.refresh(db_category)
+    db.refresh(db_category)  # refresh(): commit 후 DB에서 최신 상태를 다시 로드 (server_default 값 만영)
     return db_category
 
 
@@ -42,6 +42,7 @@ def update_category(db: Session, category_id: int, category_in: CategoryUpdate) 
     """수정 - 변경된 필드만 업데이트"""
     db_category = get_category(db, category_id)
 
+    # exclude_none=True: None인 필드 제외 -> 클라이언트가 보내지 않은 필드는 수정하지 않음
     update_data = category_in.model_dump(exclude_none=True)
     for field, value in update_data.items():
         setattr(db_category, field, value)
@@ -52,7 +53,7 @@ def update_category(db: Session, category_id: int, category_in: CategoryUpdate) 
 
 
 def delete_category(db: Session, category_id: int) -> None:
-    """삭"""
+    """삭제"""
     db_category = get_category(db, category_id)
     db.delete(db_category)
     db.commit()

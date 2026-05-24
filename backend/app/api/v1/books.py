@@ -13,7 +13,9 @@ router = APIRouter(prefix="/books", tags=["books"])
 def get_books(
         # 검색어 - None이면 전체 목록 반환
         q: str | None = Query(default=None, description="검색어 (제목/저자/설명)"),
-        # 검색 방식 - like: LIKE 검색, trigram: pg_trgm 검색
+        # 검색 방식 선택
+        # like: 순수 LIKE 전체 스캔 (성능 기준점)
+        # trigram: pg_trgm 유사도 검색 (GIN 인덱스 활용, 영어 오타 허용)
         search_type: Literal["like", "trigram"] = Query(default="like", description="검색 방식: like(LIKE 검색), trigram(pg_trgm 검색)"),
         skip: int = 0,
         limit: int = 100,
@@ -38,6 +40,7 @@ def get_book(
     return book_service.get_book(db, book_id)
 
 
+# status_code=201: 리소스 생성 성공 시 200 대신 201 반환 (HTTP 표준)
 @router.post("", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
 def create_book(
         book_in: BookCreate,
@@ -49,12 +52,13 @@ def create_book(
 @router.patch("/{book_id}", response_model=BookResponse)
 def update_book(
         book_id: int,
-        book_in: BookUpdate,
+        book_in: BookUpdate,  # 변경할 필드만 포함 (PATCH 방식)
         db: Session = Depends(get_db),
 ):
     return book_service.update_book(db, book_id, book_in)
 
 
+# status_code=204: 삭제 성공 시 응답 body 없음 (HTTP 표준)
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_book(
         book_id: int,

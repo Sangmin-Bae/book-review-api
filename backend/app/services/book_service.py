@@ -8,7 +8,7 @@ from app.services.category_service import get_category
 
 
 def get_book(db: Session, book_id: int) -> Book:
-    """단건 조회 - 카테고리 정보 함께 로드"""
+    """단건 조회 - 카테고리 정보 함께 로드제 (N+1 문제 방지)"""
     book = db.execute(
         select(Book).options(joinedload(Book.category)).where(Book.id == book_id)
     ).scalar_one_or_none()
@@ -19,7 +19,7 @@ def get_book(db: Session, book_id: int) -> Book:
 
 
 def get_books(db: Session, skip: int = 0, limit: int = 100) -> list[Book]:
-    """목록 조회"""
+    """목록 조회 - 카테고리 정보 함께 로드 (N+1 문제 방지)"""
     return db.execute(
         select(Book).options(joinedload(Book.category)).offset(skip).limit(limit)
     ).scalars().all()
@@ -46,12 +46,13 @@ def create_book(db: Session, book_in: BookCreate) -> Book:
 
 
 def update_book(db: Session, book_id: int, book_in: BookUpdate) -> Book:
-    """수정"""
+    """수정 - 변경된 필드만 업데이트"""
     db_book = get_book(db, book_id)
 
     if book_in.category_id:
-        get_category(db, book_in.category_id)
+        get_category(db, book_in.category_id)  # 존재하지 않으면 404 자동 발생
 
+    # exclude_none=True: None인 필드 제외 → 클라이언트가 보내지 않은 필드는 수정하지 않음
     update_data = book_in.model_dump(exclude_none=True)
     for field, value in update_data.items():
         setattr(db_book, field, value)
@@ -62,7 +63,7 @@ def update_book(db: Session, book_id: int, book_in: BookUpdate) -> Book:
 
 
 def delete_book(db: Session, book_id: int) -> None:
-    """삭제"""
+    """삭제 - cascade 설정으로 관련 리뷰도 함께 삭제됨"""
     db_book = get_book(db, book_id)
     db.delete(db_book)
     db.commit()
@@ -136,7 +137,7 @@ def search_books_trigram(
         - 유사도 기반 검색도 가능 (오타 허용)
         - title/author: GIN 인덱스 활용
         - description: 인덱스 없어서 ilike로 보완 (전체 스캔)
-    용도: LIKE보다 빠르며 오타가 있어도 검색 결과를 보여줄 때
+    용도: LIKE보다 빠르며 유사도 기반 검색이 필요할 때
     """
     search_pattern = f"%{query}%"
 
@@ -144,8 +145,9 @@ def search_books_trigram(
         select(Book)
         .options(joinedload(Book.category))
         .where(
-            # % 연산자: trigram 유사도 비교 (오타 허용)
-            # '파친코'와 '파칠고'처럼 유사한 텍스트도 매칭
+            # % 연산자: trigram 유사도 비교
+            # 영어 오타 허용 (pachingo -> pachinko)
+            # 한국어는 음절 단위 분리로 유사도가 낮아 효과 제한적
             Book.title.op('%')(query) |
             Book.author.op('%')(query) |
             # description: GIN 인덱스 없음 -> ilike로 전체 스캔
