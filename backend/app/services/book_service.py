@@ -136,22 +136,21 @@ def search_books_trigram(
         limit: int = 100,
 ) -> list[Book]:
     """
-    pg_trgm(trigram) 검색 방식
+    pg_trgm similarity 검색 방식
 
     동작:
-        - 텍스트를 3글자 조각으로 분리해서 GIN 인덱스로 검색
-        - trigram 유사도 연산자(%)로 유사한 텍스트 검색
+        - % 연산자(similarity)로 title/author 유사도 비교
+        - GIN trigram 인덱스 활용
     특징:
-        - LIKE '%검색어%' 패턴에서도 GIN 인덱스 활용 가능
-        - 한국어 포함 모든 언어 지원 (언어 무관)
-        - LIKE 검색보다 빠름
-        - 유사도 기반 검색도 가능 (오타 허용)
-        - title/author: GIN 인덱스 활용
-        - description: 인덱스 없어서 ilike로 보완 (전체 스캔)
-    용도: LIKE보다 빠르며 유사도 기반 검색이 필요할 때
+        - title/author: GIN trigram 인덱스 활용 + similarity 유사도 비교
+        - 영어 오타 허용 (pachinka -> pachinko)
+        - 한국어 바이트 구조 특성상 효과 제한적
+        - description 제외 이유
+            OR 조건에 인덱스 없는 컬럼이 포함되면
+            전체 Seq Scan 으로 처리됨 (EXPLAIN ANALYZE 검증)
+            description 검색은 token 방식(search_tokens)에서 담당
+    용도: title/author 대상 영어 오타 허용 검색
     """
-    search_pattern = f"%{query}%"
-
     return db.execute(
         select(Book)
         .options(joinedload(Book.category))
@@ -160,11 +159,7 @@ def search_books_trigram(
             # 영어 오타 허용 (pachingo -> pachinko)
             # 한국어는 음절 단위 분리로 유사도가 낮아 효과 제한적
             Book.title.op('%')(query) |
-            Book.author.op('%')(query) |
-            # description: GIN 인덱스 없음 -> ilike로 전체 스캔
-            # 유사도 연산자를 description에도 적용하면
-            # 인덱스 없이 전체 유사도 계산 -> 매우 느릴 수 있음
-            Book.description.ilike(search_pattern)
+            Book.author.op('%')(query)
         )
         .offset(skip)
         .limit(limit)
