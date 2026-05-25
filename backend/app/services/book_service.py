@@ -197,3 +197,54 @@ def search_books_fts(
         .offset(skip)
         .limit(limit)
     ).scalars().all()
+
+
+def get_books_cursor(
+        db: Session,
+        cursor: int | None = None,
+        limit: int = 10,
+) -> dict:
+    """
+    Cursor 기반 페이지네이션 조회
+
+    동작:
+        - cursor(마지막으로 본 id)를 기준으로 다음 데이터 조회
+        - cursor가 없으면 첫 페이지
+        - limit + 1개를 조회해서 다음 페이지 존재 여부 확인
+    특징:
+        - id 기본키 인덱스 활용 -> 깊은 페이지도 일정한 속도
+        - 데이터 추가/삭제 시에도 누락/중복 없음
+        - offset 방식 대비 대용량 데이터에서 성능 우수
+    """
+    # limit + 1개를 조회하는 이유:
+    # limit개만 조회하면 다음 페이지가 있는지 알 수 없음
+    # 1개를 더 조회해서 limit개 초과 시 has_next=True로 판단
+    query = (
+        select(Book)
+        .options(joinedload(Book.category))
+        .order_by(Book.id.asc())  # id 오름차순 정렬 - cursor 기준점으로 사용
+        .limit(limit + 1)
+    )
+
+    if cursor:
+        # cursor가 있으면 해당 id 이후 데이터만 조회
+        # WHERE id > cursor -> id 기본키 B-Tree 인덱스 활용
+        query = query.where(Book.id > cursor)
+
+    books = db.execute(query).scalars().all()
+
+    # limit + 1개를 조회했으므로 limit개 초과 시 다음 페이지 존재
+    has_next = len(books) > limit
+
+    # has_next가 True이면 마지막 1개는 다음 페이지 확인용이므로 제거
+    items = books[:limit]
+
+    # 다음 cursor는 현재 페이지 마지막 항목의 id
+    # has_next가 False면 다음 페이지 없으므로 None
+    next_cursor = items[-1].id if has_next and items else None
+
+    return {
+        "items": items,
+        "next_cursor": next_cursor,
+        "has_next": has_next,
+    }

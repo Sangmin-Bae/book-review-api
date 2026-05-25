@@ -40,3 +40,19 @@ class BookResponse(BookBase):
     # ORM 객체를 Pydantic 스키마로 변환할 때 필요
     # SQLAlchemy 모델 객체의 속성을 직접 읽을 수 있게 허용
     model_config = {"from_attributes": True}
+
+
+# Cursor 페이지네이션 응답 스키마
+# offset 방식과 달리 다음 페이지 기준점(cursor)을 응답에 포함
+class BookCursorPage(BaseModel):
+    # 현재 페이지의 도서 목록
+    items: list[BookResponse]
+
+    # 다음 페이지 요청 시 사용할 cursor 값
+    # 현재 페이지 마지막 항목의 id
+    # None이면 다음 페이지 없음
+    next_cursor: int | None
+
+    # 다음 페이지 존재 여부
+    # limit + 1개를 조회해서 limit개 초과 시 True
+    has_next: bool

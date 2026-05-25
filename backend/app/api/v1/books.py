@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Literal
 
 from app.db.session import get_db
-from app.schemas.book import BookCreate, BookUpdate, BookResponse
+from app.schemas.book import BookCreate, BookUpdate, BookResponse, BookCursorPage
 from app.services import book_service
 
 router = APIRouter(prefix="/books", tags=["books"])
@@ -35,6 +35,19 @@ def get_books(
         return book_service.search_books_trigram(db, q, skip=skip, limit=limit)
     elif search_type == "fts":
         return book_service.search_books_fts(db, q, skip=skip, limit=limit)
+
+
+# Cursor 페이지네이션 전용 엔드포인트
+# offset 방식(/books)과 별도로 분리 -  두 방식의 차이를 명확히 보여주기 위함
+@router.get("/cursor", response_model=BookCursorPage)
+def get_books_cursor(
+        # 마지막으로 받은 도서의 id - 첫 페이지는 None
+        cursor: int | None = Query(default=None, description="마지막으로 받은 도서 id (첫 페이지는 생략)"),
+        # 한 페이지에 반환할 도서 수
+        limit: int = Query(default=10, ge=1, le=100, description="페이지당 도서 수"),
+        db: Session = Depends(get_db),
+):
+    return book_service.get_books_cursor(db, cursor=cursor, limit=limit)
 
 
 @router.get("/{book_id}", response_model=BookResponse)
