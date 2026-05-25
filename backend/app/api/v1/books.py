@@ -16,9 +16,9 @@ def get_books(
         # 검색 방식 선택
         # like: 순수 LIKE 전체 스캔 (성능 기준점)
         # trigram: pg_trgm 유사도 검색 (GIN 인덱스 활용, 영어 오타 허용)
-        search_type: Literal["like", "trigram", "fts"] = Query(
+        search_type: Literal["like", "trigram", "fts", "token"] = Query(
             default="like",
-            description="검색 방식: like(LIKE 순차 스캔), trigram(pg_trgm 유사도), fts(Full-Text Search)"
+            description="검색 방식: like(LIKE 순차 스캔), trigram(pg_trgm 유사도), fts(Full-Text Search), token(형태소 분석 + trigram)",
         ),
         skip: int = 0,
         limit: int = 100,
@@ -35,6 +35,10 @@ def get_books(
         return book_service.search_books_trigram(db, q, skip=skip, limit=limit)
     elif search_type == "fts":
         return book_service.search_books_fts(db, q, skip=skip, limit=limit)
+    elif search_type == "token":
+        return book_service.search_books_token(db, q, skip=skip, limit=limit)
+
+    return []
 
 
 # Cursor 페이지네이션 전용 엔드포인트

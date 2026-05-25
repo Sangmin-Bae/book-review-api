@@ -2,6 +2,7 @@ from sqlalchemy import select, text, func
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
+from app.core.tokenizer import tokenize
 from app.models.book import Book
 from app.schemas.book import BookCreate, BookUpdate
 from app.services.category_service import get_category
@@ -39,6 +40,12 @@ def create_book(db: Session, book_in: BookCreate) -> Book:
         get_category(db, book_in.category_id)
 
     db_book = Book(**book_in.model_dump())
+
+    # 제목 + 저자 + 설명을 합쳐서 토크나이징
+    # search_tokens에 저장해서 나중에 trigram 검색에 활용
+    txt = f"{book_in.title} {book_in.author} {book_in.description or ''}"
+    db_book.search_tokens = tokenize(txt)
+
     db.add(db_book)
     db.commit()
     db.refresh(db_book)
@@ -56,6 +63,10 @@ def update_book(db: Session, book_id: int, book_in: BookUpdate) -> Book:
     update_data = book_in.model_dump(exclude_none=True)
     for field, value in update_data.items():
         setattr(db_book, field, value)
+
+    # 제목/저자/설명이 변경됐을 수 있으므로 토큰 재생성
+    txt = f"{db_book.title} {db_book.author} {db_book.description or ''}"
+    db_book.search_tokens = tokenize(txt)
 
     db.commit()
     db.refresh(db_book)
@@ -194,6 +205,65 @@ def search_books_fts(
         # search_vector의 가중치(A/B/C) 반영
         # desc(): 관련도 높은 순서로 정렬
         .order_by(func.ts_rank(Book.search_vector, ts_query).desc())
+        .offset(skip)
+        .limit(limit)
+    ).scalars().all()
+
+
+def search_books_token(
+        db: Session,
+        query: str,
+        skip: int = 0,
+        limit: int = 100,
+) -> list[Book]:
+    """
+    Python 레벨 토크나이저 + word_similarity 검색 방식
+
+    동작:
+        - 검색어를 tokenize()로 형태소 분석
+        - 분석된 토큰으로 search_tokens 컬럼에 word_similarity 검색
+    특징:
+        - 한국어 조사/어미 제거 후 검색 (FTS simple 토크나이저 한계 극복)
+        - 영어 어간 추출 적용
+        - word_similarity: search_tokens를 단어 단위로 분할 후
+          각 단어와 검색어를 개별 비교해서 최고 유사도로 매칭 판단
+          -> similarity와 달리 긴텍스트에서도 정확한 유사도 계산 가능
+        - op('<%') or op('%>'): word_similarity 연산자
+          검색어가 search_tokens의 어떤 단어와 유사하면 매칭
+        - FTS와 달리 ts_rank 기반 관련도 정렬 없음
+    용도: 한국어 + 영어 혼합 텍스트의 정확한 형태소 기반 검색
+    """
+    # 검색어도 동일한 토크나이저로 분석
+    # 저장된 토큰과 같은 형태로 변환해야 매칭 가능
+    tokenized_query = tokenize(query)
+
+    if not tokenized_query:
+        # 토크나이징 결과가 없으면 원본 검색어로 word_similarity fallback
+        tokenized_query = query
+
+    # word_similarity 임계값을 0.3으로 낮춰서 오타 허용 범위 확대
+    # 기본값 0.6은 'pachinka' -> 'pachinko' 같은 오타도 통과 못할 . 있음
+    # SET LOCAL: 현재 트랜잭션에만 적용, 다른 요청에 영향 없음
+    db.execute(text("SET LOCAL pg_trgm.word_similarity_threshold = 0.3"))
+
+    # word_similarity 유사도 검색
+    # search_tokens에 저장된 토큰 문자열과 검색어 토큰을 word_similarity 방식으로 비교
+    return db.execute(
+        select(Book)
+        .options(joinedload(Book.category))
+        .where(
+            # op('<%') or op('%>'): word_similarity 연산자
+            # %> 연산자: 컬럼 %> 검색어
+            # -> word_similarity(검색어, 컬럼) > threshold
+            # -> search_tokens의 각 단어와 검색어를 개별 비교
+            # -> 가장 유사한 단어의 유사도로 매칭 여부 결정
+            # 예: tokenized_query = 'pachinka'
+            #   search_tokens = 'pachinko 이진진 재일교포 소설'
+            #   -> 'pachinka' vs 'pachinko' 단어 비교 -> 유사도 높음 -> 매칭
+            # similarity와 달리 긴 텍스트에서도 단어 단위로 정확히 비교
+            # func.word_similarity()가 아닌 연산자를 써야 GIN 인덱스 활용 가능
+            Book.search_tokens.op('%>')(tokenized_query)
+        )
         .offset(skip)
         .limit(limit)
     ).scalars().all()

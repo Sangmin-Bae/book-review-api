@@ -23,6 +23,10 @@ class Book(Base):
     # title + author + description을 가중치별로 합쳐서 저장
     # DB 트리거가 INSERT/UPDATE 시 자동 갱신 - 앱 코드에서 직접 수정하지 않음
     search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
+    # Python 레벨 토크나이저가 생성한 토큰 문자열
+    # tokenize() 함수가 INSERT/UPDATE 시 앱 코드에서 직접 갱신
+    # search_vector(DB 트리거 자동 갱신)와 달리 앱이 직접 관리
+    search_tokens: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # FK - categories 테이블의 id를 참조
     # ondelete="SET NULL": 카테고리 삭제 시 category_id를 NULL로 변경 (도서는 유지)

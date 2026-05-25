@@ -8,6 +8,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# NLTK 데이터 다운로드
+# punkt: 단어/문장 분리에 필요한 언어 데이터
+# 빌드 시 한 번만 다운받아서 이미지에 포함
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
+
 # 소스코드 복사
 COPY . .
 
