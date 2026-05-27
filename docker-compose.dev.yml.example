@@ -1,18 +1,18 @@
-# production 환경 전용
-# 실행: docker compose up
-name: book-review-prd
+# development 환경 전용
+# 실행: docker compose -f docker-compose.dev.yml watch
+name: book-review-dev
 
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: book-review-prod-backend
+    container_name: book-review-dev-backend
     ports:
-      - "${APP_PORT}:${APP_PORT}"
-    command: uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT} --workers 2
+      - "8001:${APP_PORT}"
+    command: uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT} --reload
     environment:
-      - APP_ENV=production
+      - APP_ENV=${APP_ENV}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -21,12 +21,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+          ignore:
+            - .venv/
+            - __pycache__/
+        - action: rebuild
+          path: ./backend/requirements.txt
 
   db:
     image: postgres:16-alpine
-    container_name: book-review-prod-db
+    container_name: book-review-dev-db
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "5432:5432"
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}

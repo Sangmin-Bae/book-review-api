@@ -27,3 +27,6 @@ venv.bak/
 
 # Pyenv
 .python-version
+
+# Docker Compose development 전용 파일
+docker-compose.dev.yml

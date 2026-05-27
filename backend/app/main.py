@@ -31,9 +31,10 @@ def health_check():
     except Exception as e:
         db_status = f"error: {str(e)}"
 
-    return {
-        "status": "ok",
-        "env": settings.app_env,
-        "db_host": settings.postgres_host,
-        "db_status": db_status,
-    }
+    response = {"status": "ok", "db_status": db_status}
+
+    if settings.app_env == "development":
+        response["env"] = settings.app_env
+        response["db_host"] = settings.postgres_host
+
+    return response
